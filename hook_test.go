@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/sirupsen/logrus"
 	"github.com/smartystreets/assertions"
 	"github.com/smartystreets/assertions/should"
@@ -39,7 +40,7 @@ func TestHook(t *testing.T) {
 	cred := credentials.NewStaticCredentials(key, secret, "")
 	cfg := aws.NewConfig().WithRegion("us-east-1").WithCredentials(cred)
 
-	hook, err := NewHook(group, stream, cfg)
+	hook, err := NewHook(group, stream, session.New(cfg), 0)
 	a.So(err, should.BeNil)
 	a.So(hook, should.NotBeNil)
 
@@ -78,7 +79,7 @@ func TestConcurrentHook(t *testing.T) {
 	cred := credentials.NewStaticCredentials(key, secret, "")
 	cfg := aws.NewConfig().WithRegion("us-east-1").WithCredentials(cred)
 
-	hook, err := NewHook(group, stream, cfg)
+	hook, err := NewHook(group, stream, session.New(cfg), 0)
 	a.So(err, should.BeNil)
 	a.So(hook, should.NotBeNil)
 
@@ -123,7 +124,7 @@ func TestBatching(t *testing.T) {
 	cred := credentials.NewStaticCredentials(key, secret, "")
 	cfg := aws.NewConfig().WithRegion("us-east-1").WithCredentials(cred)
 
-	hook, err := NewBatchingHook(group, stream, cfg, 100*time.Millisecond)
+	hook, err := NewHook(group, stream, session.New(cfg), 100*time.Millisecond)
 	a.So(err, should.BeNil)
 	a.So(hook, should.NotBeNil)
 

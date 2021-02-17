@@ -2,7 +2,6 @@ package logrus_cloudwatchlogs
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"time"
@@ -23,45 +22,14 @@ type Hook struct {
 	m                 sync.Mutex
 	ch                chan *cloudwatchlogs.InputLogEvent
 	err               *error
+	fields            logrus.Fields
+	formatter         logrus.Formatter
 }
 
-func NewHookWithDuration(groupName, streamName string, sess *session.Session, batchFrequency time.Duration) (*Hook, error) {
-	return NewBatchingHook(groupName, streamName, sess, batchFrequency)
-}
-
-func NewHook(groupName, streamName string, sess *session.Session) (*Hook, error) {
-	return NewBatchingHook(groupName, streamName, sess, 0)
-}
-
-func (h *Hook) getOrCreateCloudWatchLogGroup() (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
-	resp, err := h.svc.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
-		LogGroupName:        aws.String(h.groupName),
-		LogStreamNamePrefix: aws.String(h.streamName),
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case cloudwatchlogs.ErrCodeResourceNotFoundException:
-				_, err = h.svc.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
-					LogGroupName: aws.String(h.groupName),
-				})
-				if err != nil {
-					return nil, err
-				}
-				return h.getOrCreateCloudWatchLogGroup()
-			default:
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-	return resp, nil
-
-}
-
-func NewBatchingHook(groupName, streamName string, sess *session.Session, batchFrequency time.Duration) (*Hook, error) {
+// NewHook returns a new CloudWatch hook.
+//
+// CloudWatch log events are sent in batches on an interval, batchFrequency. Pass 0 to sent events immediately.
+func NewHook(groupName, streamName string, sess *session.Session, batchFrequency time.Duration) (*Hook, error) {
 	h := &Hook{
 		svc:        cloudwatchlogs.New(sess),
 		groupName:  groupName,
@@ -75,7 +43,7 @@ func NewBatchingHook(groupName, streamName string, sess *session.Session, batchF
 
 	if batchFrequency > 0 {
 		h.ch = make(chan *cloudwatchlogs.InputLogEvent, 10000)
-		go h.putBatches(time.Tick(batchFrequency))
+		go h.putBatches(time.NewTicker(batchFrequency).C)
 	}
 
 	// grab the next sequence token
@@ -96,8 +64,34 @@ func NewBatchingHook(groupName, streamName string, sess *session.Session, batchF
 	return h, nil
 }
 
+// WithFields includes the given fields to log entries sent to CloudWatch.
+func (h *Hook) WithFields(fields logrus.Fields) *Hook {
+	h.fields = fields
+	return h
+}
+
+// WithFormatter uses the given formatter to format log entries sent to CloudWatch.
+func (h *Hook) WithFormatter(formatter logrus.Formatter) *Hook {
+	h.formatter = formatter
+	return h
+}
+
+// Fire sends the given entry to CloudWatch.
 func (h *Hook) Fire(entry *logrus.Entry) error {
-	line, err := entry.String()
+	if h.fields != nil {
+		entry = entry.WithFields(h.fields)
+	}
+
+	var line string
+	var err error
+	if h.formatter != nil {
+		var b []byte
+		b, err = h.formatter.Format(entry)
+		line = string(b)
+	} else {
+		line, err = entry.String()
+	}
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to read entry, %v", err)
 		return err
@@ -120,6 +114,53 @@ func (h *Hook) Fire(entry *logrus.Entry) error {
 	default:
 		return nil
 	}
+}
+
+// Write sends the given bytes to CloudWatch.
+func (h *Hook) Write(p []byte) (n int, err error) {
+	event := &cloudwatchlogs.InputLogEvent{
+		Message:   aws.String(string(p)),
+		Timestamp: aws.Int64(int64(time.Nanosecond) * time.Now().UnixNano() / int64(time.Millisecond)),
+	}
+
+	// Batching hook - send event via channel
+	if h.ch != nil {
+		h.ch <- event
+		if h.err != nil {
+			lastErr := h.err
+			h.err = nil
+			return 0, fmt.Errorf("%v", *lastErr)
+		}
+		return len(p), nil
+	}
+
+	// Synchronous hook - send event immediately
+	h.sendBatch([]*cloudwatchlogs.InputLogEvent{event})
+	return len(p), nil
+}
+
+func (h *Hook) getOrCreateCloudWatchLogGroup() (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
+	resp, err := h.svc.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
+		LogGroupName:        aws.String(h.groupName),
+		LogStreamNamePrefix: aws.String(h.streamName),
+	})
+
+	if err == nil {
+		return resp, nil
+	}
+
+	aerr, ok := err.(awserr.Error)
+	if ok && aerr.Code() == cloudwatchlogs.ErrCodeResourceNotFoundException {
+		_, err = h.svc.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
+			LogGroupName: aws.String(h.groupName),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return h.getOrCreateCloudWatchLogGroup()
+	}
+
+	return nil, err
 }
 
 func (h *Hook) putBatches(ticker <-chan time.Time) {
@@ -151,90 +192,28 @@ func (h *Hook) sendBatch(batch []*cloudwatchlogs.InputLogEvent) {
 	if len(batch) == 0 {
 		return
 	}
+
 	params := &cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     batch,
 		LogGroupName:  aws.String(h.groupName),
 		LogStreamName: aws.String(h.streamName),
 		SequenceToken: h.nextSequenceToken,
 	}
+
 	resp, err := h.svc.PutLogEvents(params)
-	if err != nil {
-		h.err = &err
-	} else {
+	if err == nil {
 		h.nextSequenceToken = resp.NextSequenceToken
-	}
-}
-
-func (h *Hook) Write(p []byte) (n int, err error) {
-	event := &cloudwatchlogs.InputLogEvent{
-		Message:   aws.String(string(p)),
-		Timestamp: aws.Int64(int64(time.Nanosecond) * time.Now().UnixNano() / int64(time.Millisecond)),
+		return
 	}
 
-	if h.ch != nil {
-		h.ch <- event
-		if h.err != nil {
-			lastErr := h.err
-			h.err = nil
-			return 0, fmt.Errorf("%v", *lastErr)
-		}
-		return len(p), nil
+	h.err = &err
+	if aerr, ok := err.(*cloudwatchlogs.InvalidSequenceTokenException); ok {
+		h.nextSequenceToken = aerr.ExpectedSequenceToken
+		h.sendBatch(batch)
 	}
-
-	h.m.Lock()
-	defer h.m.Unlock()
-
-	params := &cloudwatchlogs.PutLogEventsInput{
-		LogEvents:     []*cloudwatchlogs.InputLogEvent{event},
-		LogGroupName:  aws.String(h.groupName),
-		LogStreamName: aws.String(h.streamName),
-		SequenceToken: h.nextSequenceToken,
-	}
-	resp, err := h.svc.PutLogEvents(params)
-	if err != nil {
-		return 0, err
-	}
-
-	h.nextSequenceToken = resp.NextSequenceToken
-
-	return len(p), nil
 }
 
 func (h *Hook) Levels() []logrus.Level {
-	return []logrus.Level{
-		logrus.PanicLevel,
-		logrus.FatalLevel,
-		logrus.ErrorLevel,
-		logrus.WarnLevel,
-		logrus.InfoLevel,
-		logrus.DebugLevel,
-	}
-}
-
-// WriterHook is a hook that just outputs to an io.Writer.
-// This is useful because our formatter outputs the file
-// and line where it was called, and the callstack for a hook
-// is different from the callstack for just writing to logrus.Logger.Out.
-type WriterHook struct {
-	w io.Writer
-}
-
-func NewWriterHook(w io.Writer) *WriterHook {
-	return &WriterHook{w: w}
-}
-
-func (h *WriterHook) Fire(entry *logrus.Entry) error {
-	line, err := entry.String()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to read entry, %v", err)
-		return err
-	}
-
-	_, err = h.w.Write([]byte(line))
-	return err
-}
-
-func (h *WriterHook) Levels() []logrus.Level {
 	return []logrus.Level{
 		logrus.PanicLevel,
 		logrus.FatalLevel,

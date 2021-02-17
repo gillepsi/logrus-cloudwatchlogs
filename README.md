@@ -1,5 +1,9 @@
 # Cloud Watch Logs hook for Logrus [![godoc reference](https://godoc.org/github.com/kdar/logrus-cloudwatchlogs?status.png)](https://godoc.org/github.com/kdar/logrus-cloudwatchlogs)
 
+This fork of logrus-cloudwatchlogs:
+
+* Resolves https://github.com/kdar/logrus-cloudwatchlogs/issues/5.
+* Implements nice-to-have methods `Hook.WithFields()` and `Hook.WithFormatter()`.
 
 Use this hook to send your [Logrus](https://github.com/sirupsen/logrus) logs to Amazon's [Cloud Watch Logs](https://aws.amazon.com/cloudwatch/details/#log-monitoring).
 

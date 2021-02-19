@@ -192,11 +192,11 @@ func (h *Hook) putBatches(ticker <-chan time.Time) {
 }
 
 func (h *Hook) sendBatch(batch []*cloudwatchlogs.InputLogEvent) {
-	h.m.Lock()
-
 	if len(batch) == 0 {
 		return
 	}
+
+	h.m.Lock()
 
 	params := &cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     batch,

@@ -193,7 +193,6 @@ func (h *Hook) putBatches(ticker <-chan time.Time) {
 
 func (h *Hook) sendBatch(batch []*cloudwatchlogs.InputLogEvent) {
 	h.m.Lock()
-	defer h.m.Unlock()
 
 	if len(batch) == 0 {
 		return
@@ -209,14 +208,19 @@ func (h *Hook) sendBatch(batch []*cloudwatchlogs.InputLogEvent) {
 	resp, err := h.svc.PutLogEvents(params)
 	if err == nil {
 		h.nextSequenceToken = resp.NextSequenceToken
+		h.m.Unlock()
 		return
 	}
 
 	h.err = &err
 	if aerr, ok := err.(*cloudwatchlogs.InvalidSequenceTokenException); ok {
 		h.nextSequenceToken = aerr.ExpectedSequenceToken
+		h.m.Unlock()
 		h.sendBatch(batch)
+		return
 	}
+
+	h.m.Unlock()
 }
 
 func (h *Hook) Levels() []logrus.Level {

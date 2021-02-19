@@ -11,6 +11,8 @@ github.com/kdar/gtest v0.0.0-20171003232747-b20da4453579 h1:L+qix2kCiUHMDJRHgQF7
 github.com/kdar/gtest v0.0.0-20171003232747-b20da4453579/go.mod h1:536LC8OTUEct5Z16El02WNFqiBENncHy291DyyWd8Hs=
 github.com/kdar/logrus-cloudwatchlogs v0.0.0-20191029193323-96a456d8a358 h1:kRMfwIztgvM7klvW0yXnns58WcUI/CPGpaB7l+Wl+nE=
 github.com/kdar/logrus-cloudwatchlogs v0.0.0-20191029193323-96a456d8a358/go.mod h1:ofZiSRdosqysKOk+xr2jFgr+ZYXFXmlrttnm9Xg5Emo=
+github.com/kdar/logrus-cloudwatchlogs v0.0.0-20200414190340-facbc54742f0 h1:eFW1oqgRrC2xFDXpVSPKP8VZ/8lH4OcWXBEmY7aTefY=
+github.com/kdar/logrus-cloudwatchlogs v0.0.0-20200414190340-facbc54742f0/go.mod h1:IiDK6MwnNQCziECHAm1PcJERisOAK+TR0EDNT6FjVcM=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

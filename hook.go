@@ -28,7 +28,7 @@ type Hook struct {
 
 // NewHook returns a new CloudWatch hook.
 //
-// CloudWatch log events are sent in batches on an interval, batchFrequency. Pass 0 to sent events immediately.
+// CloudWatch log events are sent in batches on an interval, batchFrequency. Pass 0 to send events synchronously.
 func NewHook(groupName, streamName string, sess *session.Session, batchFrequency time.Duration) (*Hook, error) {
 	h := &Hook{
 		svc:        cloudwatchlogs.New(sess),
@@ -79,7 +79,13 @@ func (h *Hook) WithFormatter(formatter logrus.Formatter) *Hook {
 // Fire sends the given entry to CloudWatch.
 func (h *Hook) Fire(entry *logrus.Entry) error {
 	if h.fields != nil {
+		// WithFields() resets the entry. Ensure that we pass data that gets reset.
+		oldEntry := entry
 		entry = entry.WithFields(h.fields)
+		entry.Buffer = oldEntry.Buffer
+		entry.Caller = oldEntry.Caller
+		entry.Level = oldEntry.Level
+		entry.Message = oldEntry.Message
 	}
 
 	var line string

@@ -224,12 +224,5 @@ func (h *Hook) sendBatch(batch []*cloudwatchlogs.InputLogEvent) {
 }
 
 func (h *Hook) Levels() []logrus.Level {
-	return []logrus.Level{
-		logrus.PanicLevel,
-		logrus.FatalLevel,
-		logrus.ErrorLevel,
-		logrus.WarnLevel,
-		logrus.InfoLevel,
-		logrus.DebugLevel,
-	}
+	return logrus.AllLevels
 }
